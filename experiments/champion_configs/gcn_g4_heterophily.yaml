@@ -1,0 +1,38 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+  edge_loading:
+    founder_coworking: true
+  graph_variant: g4_heterophily
+explain:
+  enabled: false
+models:
+  GCN:
+    activation_type: relu
+    add_self_loops: false
+    dropout: 0.3336383377027469
+    hidden_channels: 128
+    normalize: true
+seed: 42
+train:
+  epochs: 100
+  gradient_clip_val: 0.8708764812930263
+  jumping_knowledge: last
+  loss:
+    label_smoothing: 0.08042811588655817
+    liquidity_weight: 0.46916088896681585
+    momentum_weight: 1.4689898442302134
+  lr: 0.015639296102413172
+  model: GCN
+  num_layers: 3
+  optimizer: AdamW
+  scheduler:
+    type: ReduceLROnPlateau
+    warmup_epochs: 20
+  weight_decay: 0.00018613430446183036
+wandb:
+  enabled: true

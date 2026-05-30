@@ -1,0 +1,28 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+explain:
+  enabled: false
+models:
+  MLP:
+    activation_type: relu
+    dropout: 0.018410552432853056
+    hidden_channels: 128
+seed: 42
+train:
+  epochs: 100
+  gradient_clip_val: 1.9321732809639711
+  loss:
+    label_smoothing: 0.0033877268497735204
+    liquidity_weight: 0.7086797354339824
+    momentum_weight: 1.373758300386022
+  lr: 0.008802319617444406
+  model: MLP
+  num_layers: 3
+  weight_decay: 1.6247584587799072e-06
+wandb:
+  enabled: true

@@ -1,0 +1,16 @@
+data/*
+!data/.gitkeep
+outputs/
+.icdm-submission
+experiments/registry/
+wandb/
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.pt
+*.log
+secrets.yaml
+.env

@@ -1,0 +1,17 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+  edge_loading:
+    founder_coworking: true
+  graph_variant: g4_heterophily
+explain:
+  enabled: false
+train:
+  model: DegreeCentralityBaseline
+  epochs: 1
+wandb:
+  enabled: true

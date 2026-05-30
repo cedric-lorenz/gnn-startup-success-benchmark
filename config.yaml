@@ -1,0 +1,465 @@
+paths:
+  data_dir: data
+  crunchbase_dir: data/crunchbase
+  graph_dir: data/graph
+  other_dir: data/other
+
+visualize:
+  enabled: false
+  output_file: outputs/graph.html
+  visible_node_types: ["startup", "founder", "investor", "sector", "city", "university"]
+  show_labels: true
+  enable_physics: true
+  max_nodes: 30
+  sample_method: "random"  # "random", "degree_based", or "connected_component"
+  show_features: true  # Display node features in tooltips
+  max_features: 10     # Maximum number of features to show per node
+  use_masks: true      # Only include nodes from train/val/test masks
+  included_masks: ["val"] #, "val", "test"]  # Which masks to include
+  feature_visualization: false
+  edge_visualization: true
+
+seed: 42
+
+wandb:
+  enabled: false
+  project: gnn-startup-successs
+  tags: ["GNN", "hetero", "startup-success-prediction"]
+  use_sweep: false
+  sweep_config_path: sweep.yaml
+
+# Analysis
+analysis:
+  enable_homophily_analysis: true
+  enable_downstream_analysis: true
+  # Decision-boundary PCA plots at end of training. Expensive on the full
+  # Crunchbase graph (full-forward + PCA fit + matplotlib render) and the
+  # dominant cause of end-of-epoch OOM crashes on memory-constrained
+  # allocations. Sweep yamls override to false.
+  enable_visualization_analysis: true
+
+# Graph cache — content-addressable preprocessing cache on HPC-local disk.
+# Skips the 3-5 min preprocessing pipeline on cache hits. Versioned by a hash
+# of the config subset (data_processing, graph_assembler, metapath_discovery,
+# paths). NOT uploaded to W&B (too large for the free tier).
+graph_cache:
+  enabled: true           # set false to always call perform_preprocessing() directly
+  rebuild: true           # always rebuild: the cache key is config-only, so stale
+                          # data would otherwise be served silently after a data change
+  cache_dir: outputs/graphs
+
+# Features
+features:
+  use_non_target_metapaths: false # Disabled for fair cross-architecture analysis: the 4 context paths
+                                  # (Startup -> Investor -> City, etc.) are not startup-to-startup and so
+                                  # cannot be analyzed via MLH (endpoints lack
+                                  # labels). Keep training and §6 analysis on the shared 32-path SPS set.
+
+# Metapath Discovery Configuration
+metapath_discovery:
+  mode: "manual"  # Options: "none", "manual", "automatic", "hybrid"
+  
+  # Automatic discovery settings (brute-force enumeration)
+  automatic:
+    max_hops: 3  # Maximum metapath length (2-3 recommended, 4+ = memory intensive)
+    min_edges: 1000  # Filter out sparse metapaths (Increased to 1000 for quality/memory)
+    target_node: "startup"  # Node type to discover paths to
+    
+    # Pruning options to reduce metapath count
+    prune_self_loops: true  # Remove A->B->A when direct A->A exists
+    prune_redundant: true  # Remove redundant compositions
+    prune_top_k: 10 # IMPORTANT: Keep only Top-K neighbors per node (10 * 100k nodes = ~1M edges max)
+    exclude_node_types: ["city", "sector"] # Exclude paths through these high-degree "hub" nodes (prevents OOM)
+    max_metapaths: 100  # Cap total metapaths; headroom for 32 SPS + 10 base + any additions.
+                        # (Was 30 historically; that silently dropped 11 SPS paths from SeHGNN
+                        # when the set expanded to 32.)
+    selection_strategy: "least_edges" # Prioritize specific/rare paths (high signal) over dense/generic ones
+    
+    # Materialization method
+    materialize_method: "random_walk"  # "composition" (matrix mult) or "random_walk"
+    
+
+    
+  # Manual discovery settings (existing behavior)
+  manual:
+    use_existing_definitions: true  # Use manually defined metapaths from code
+    whitelist: []  # empty = use all ~33 defined metapaths
+    
+  # Hybrid mode (combine manual + automatic)
+  hybrid:
+    use_manual: true  # Include manual metapaths
+    add_automatic: true  # Add automatic metapaths
+    automatic_max_hops: 2  # Shorter hops for hybrid to limit total count
+
+train:
+  use_gnn: true
+  model: SeHGNN # Switch back to SeHGNN to train embeddings
+  device: cuda # "cpu" or "cuda" (falls back to CPU if not available)
+  lr: 0.01
+  weight_decay: 0.0006
+  epochs: 100
+  aggregation_method: max
+  gradient_clip_val: 1.7
+
+  # Learning Rate Scheduler Configuration
+  scheduler:
+    type: CosineAnnealingLR  # Options: "ReduceLROnPlateau", "CosineAnnealingLR", "None"
+    
+    # ReduceLROnPlateau specific settings
+    mode: max              # "max" for metrics that should be maximized (e.g., AUC-ROC), "min" for loss
+    factor: 0.7           # Factor by which LR is reduced (new_lr = lr * factor)
+    patience: 10          # Number of epochs with no improvement after which LR is reduced
+    min_lr: 1e-4          # Minimum learning rate (was too low at 1e-6)
+    verbose: true         # Print when LR is reduced
+    threshold: 0.001      # Minimum improvement considered as significant (for AUC: 0.001-0.01)
+    threshold_mode: abs   # "abs" for absolute improvement, "rel" for relative
+    
+    # CosineAnnealingLR specific settings
+    T_max: 100           # Period of the cosine annealing (typically number of epochs)
+    eta_min: 1e-4        # Minimum learning rate for cosine annealing
+    warmup_epochs: 10    # Linear warmup epochs (0 = disabled)
+
+  loss:
+    binary_loss_weight: 0.5 # for multi_task balancing of binary vs. multi_prediction
+    momentum_weight: 1.0    # Weight for Momentum (Funding) task in Masked Multi-Task
+    liquidity_weight: 0.1   # Weight for Liquidity (Exit) task
+    retrieval_weight: 0.0  # Weight for Retrieval (disabled)
+    retrieval_loss_type: "contrastive"  # Options: "distillation" (cosine similarity to text), "contrastive" (triplet loss), "arcface"
+    arcface:
+      margin: 0.7           # Angular margin (m) - Increased
+      scale: 64.0           # Feature scale (s)
+      class_column: "industry_groups" # Column to use for class labels (Sector by default, adaptable for clusters)
+    
+    # Contrastive Config (Stage-Hardened)
+    contrastive_positive_source: "label" # 'text' (Unsupervised) or 'label' (Supervised/Implicit Stage-Hardening)
+    contrastive_margin: 0.5  # Margin for TripletMarginLoss (Reverted to 0.5)
+    contrastive_negatives_per_anchor: 4  # Number of negative samples per anchor
+    diversity_weight: 0.0   # Weight for Diversity Regularization (encourages diverse embeddings)
+    use_class_weights: true # automatic weight calculation based on class distribution
+    use_focal_loss: false # Use focal loss for severe class imbalance (Global flag, Masked mode uses it specifically for Liquidity)
+    focal_alpha: 0.25 # Alpha for Focal Loss (0.25 usually good for binary if < 0.5 means 'focus on 1'?? No, alpha scales class 1. check implementation)
+    focal_gamma: 2.0 # Focusing parameter (higher = more focus on hard examples)
+    status_change_weight: 1.0
+    label_smoothing: 0.05
+
+models:
+  GAT:
+    in_channels: -1
+    hidden_channels: 64
+    out_channels: 2
+    num_layers: 2
+    v2: true
+    normalize: true  # Use BatchNorm
+    activation_type: prelu
+    jumping_knowledge: "cat"
+    add_self_loops: false
+    dropout: 0.0
+    heads: 4
+    negative_slope: 0.2
+
+  GCN:
+    in_channels: -1
+    hidden_channels: 64
+    out_channels: 2
+    num_layers: 2
+    normalize: true
+    activation_type: prelu
+    jumping_knowledge: "cat"
+    dropout: 0.0
+    add_self_loops: false
+
+  RGCN:
+    hidden_channels: 64
+    num_layers: 2
+    num_bases: 30       # basis decomposition (Eq. 3); set null to disable
+    num_blocks: null    # block-diagonal decomposition (Eq. 4); mutually exclusive with num_bases
+    normalize: true
+    activation_type: relu
+    dropout: 0.2
+
+  Hetero2Net:                   # Li, Wei, Dan et al. 2023 (arXiv 2310.11664)
+    hidden_channels: 128
+    num_layers: 2               # two DisenConv layers (paper default)
+    dropout: 0.2
+    activation_type: relu
+    alpha: 0.2                  # L_corr weight (Eq. 8, Pearson dist-corr on homo/hetero) — paper default
+    beta: 0.4                   # L_rec weight (Eq. 9, masked metapath link prediction) — paper default
+    mask_ratio: 0.5             # paper 'r': metapath edge mask ratio per step
+    label_mask_ratio: 0.7       # paper 'p': label keep ratio (masking = 1 - p)
+    use_label_propagation: true # paper §5.3 masked label prediction
+    num_label_classes: 2        # momentum + liquidity binary labels
+    root_weight: true           # root-weight term in DisenConv (x_dst self-projection)
+    normalize_bn: true          # BatchNorm between DisenConv layers
+    corr_on_metapaths_only: true # true: L_corr only on startup-startup metapaths (memory); false: paper-faithful, on all edges
+    aux_reduction: sum          # "sum" (paper-faithful, matches reference impl) or "mean" (graph-size-invariant)
+    aux_loss_weight: 1.0        # gate for the (α·corr + β·link) term; set 0 to ablate
+
+  VenGNN:
+    hidden_channels: 64
+    num_layers: 2
+    heads: 4                   # K attention heads per metapath
+    dropout: 0.2
+    rw_num_walks: 8            # b = walks per startup node
+    rw_walk_length: 5          # L = startup nodes per walk
+    activation_type: relu
+    max_metapaths: 50
+    use_paper_attention: true   # true => Eq. 2 exactly (no Q/K/V projections). Won A/B vs nn.MHA (mom AUC 0.744 vs 0.733)
+    branch_mode: "full"         # "full" | "a_only" (GAT only) | "b_only" (RW self-attn only)
+    paper_widening: false       # true => keep M*hidden dim through Branch A (paper-faithful); false => project to hidden between layers
+    gat_edge_mode: "feature"    # "feature" (edge_dim=1, PathCount as attn-MLP input) | "multiplicative" (log(w) pre-softmax) | "none" (binary edges)
+    rw_weighted: false          # true => RW step probability proportional to PathCount; false => uniform
+
+  MLP:
+    hidden_channels: 64
+    num_layers: 2
+    dropout: 0.0
+    activation_type: prelu
+    normalize: true
+
+  XGBoost:
+    n_estimators: 200
+    max_depth: 3
+    learning_rate: 0.05
+    subsample: 0.6
+    colsample_bytree: 0.6
+    gamma: 5
+    reg_alpha: 5
+    reg_lambda: 10
+    min_child_weight: 5
+    scale_pos_weight: 7.6
+    objective: "binary:logistic"
+    tree_method: "hist"
+    
+  SageGNN:
+    hidden_channels: 64
+    num_layers: 2
+    activation_type: relu
+    normalize: true
+    dropout: 0.3
+    
+  HAN:
+    in_channels: -1  # Automatically inferred
+    hidden_channels: 64
+    num_layers: 1
+    heads: 4
+    negative_slope: 0.14  # LeakyReLU negative slope
+    dropout: 0.24  # Dropout rate
+    activation_type: prelu  # Can be "relu" or "prelu"
+
+  SimpleHGN:
+    # Paper defaults (Lv et al., KDD 2021, THUDM/HGB) were tuned on ACM/DBLP/IMDB
+    # (~10-20k nodes, ~tens of thousands of edges). Our Crunchbase graph is ~100k
+    # startups + investors/founders/cities/universities/sectors = ~200k nodes and
+    # multi-million edges. Message-passing memory scales as O(E * H * out_dim).
+    # A40 (44GB) smoke fit required hidden=32, heads=2 (8x less than paper). On
+    # 80GB (A100/H100) the paper-faithful heads=8, hidden=64 fits comfortably.
+    in_channels: -1            # Per-type dim inferred from graph (dict built in trainer)
+    hidden_channels: 64        # Paper default 64; drop to 32 on <= 48GB GPUs
+    num_layers: 2              # Total SimpleHGNConv layers (paper default 2-3)
+    heads: 8                   # Paper default 8; drop to 2-4 on <= 48GB GPUs
+    edge_dim: null             # Edge-type embedding dim; null -> hidden_channels
+    dropout: 0.5               # Feature dropout (paper default 0.5)
+    attn_dropout: 0.5          # Attention dropout (paper default 0.5)
+    negative_slope: 0.05       # LeakyReLU slope in attention (paper default 0.05)
+    residual: true             # Per-layer feature residual (paper default true)
+    alpha: 0.05                # Residual-attention blend weight (paper default 0.05)
+    l2_normalize: true         # Final L2-normalize embeddings (paper signature, keep on)
+    bias: false                # Per-head bias (paper default false)
+    activation_type: elu       # Hidden-layer activation (paper default elu)
+
+  SeHGNN:
+    in_channels: -1
+    hidden_channels: 128
+    num_layers: 2
+    heads: 4                 # Reduced from 8 (2026-04-22): channel count grew to 42 (32 SPS + 10 base),
+                             # attention logits [N=163k, heads, C, C] blew past 80GB at heads=8.
+                             # heads=4 is within the HGNN literature norm; keeps hidden_channels at 128.
+    dropout: 0.15
+    input_drop: 0.35
+    att_drop: 0.3
+    activation_type: leaky_relu
+    use_residual: true
+    transformer_activation: "relu"
+    use_self_loop: true
+    attention_temperature: 1
+    gamma_init: 0.0       # Transformer gamma init (0.0 = paper default)
+    gamma_learnable: true  # Whether gamma is a learnable parameter
+    channel_masking: true  # Mask empty metapath channels in transformer attention
+    use_layer_norm: true   # LayerNorm before fc_after_concat
+
+    # Retrieval projection head (SimCLR/CLIP pattern) - decouples retrieval from classification
+    use_retrieval_head: true  # Enable separate retrieval projection
+    detach_retrieval_head: false # Gradient Stop: Enabled (Protects main task)
+    retrieval_projection:
+      hidden_dim: 128         # Intermediate dimension (like SimCLR: 2048→128)
+      output_dim: 64          # Final retrieval embedding dim
+      dropout: 0.0            # Dropout for regularization
+      use_batch_norm: true    # BatchNorm after projection
+      activation: "relu"      # Activation function
+
+  LLM:
+    huggingface_token: ""  # Set via HF_TOKEN env var or paste your token here
+    model_name: "meta-llama/Meta-Llama-3-8B-Instruct"  # Knowledge cutoff: March 2023 (prevents leakage)
+    temperature: 0.0                # 0.0 for deterministic predictions (recommended: < 0.1)
+    cache_dir: "outputs/llm_cache"  # Directory to cache predictions
+    device: "auto"                  # "auto", "cuda", "cpu"
+    torch_dtype: "auto"             # "auto", "float16", "bfloat16", "float32"
+    load_in_8bit: false             # 8-bit quantization (requires bitsandbytes)
+    load_in_4bit: false             # 4-bit quantization (requires bitsandbytes)
+    use_calibration: true           # Enable base-rate anchoring in prompts (true=calibrated, false=uncalibrated)
+    use_chain_of_thought: false     # Enable chain-of-thought reasoning before probability (slower but may be more accurate)
+    prompt_features: "full"         # "full", "description_only", "features_only", "name_only", "name_and_features", "name_and_description"
+
+eval:
+  export_predictions: true # Export test predictions to CSV
+  export_metrics_json: true # Export evaluation metrics as JSON to outputs/results/
+  case_study_uuid: "5b8450df-dfb5-4d47-9168-4918c1aba3ac" # Voize
+  test_best_model: true  # Enable best model testing
+  optimization_metric_type: auc_pr
+  min_amount_of_epochs: 40
+  early_stopping:
+    enabled: true
+    patience: 15
+    min_delta: 0.00005  # Minimum change to qualify as improvement
+
+explain:
+  sampling_method: 'stratified' # 'random' or 'stratifed'
+  enabled: true
+  path: outputs/explanations
+  sample_size: 100
+  method: {attribution_method: "IntegratedGradients"} # Saliency or IntegratedGradients
+
+calibration:
+  enabled: true
+  method: platt  # 'platt' or 'isotonic'
+  apply_to_test: true
+  save_plots: false
+  plot_dir: outputs
+  n_bins: 20  # Number of bins for reliability diagrams
+  optimize_threshold: true  # Find optimal threshold on validation set
+  threshold_metric: f1  # Metric to optimize threshold for: 'f1', 'precision', 'recall', 'accuracy'
+
+data_processing:
+  start_date: "2014-01-01"
+  end_date: "2025-12-31"
+  ablation:
+      drop_edges: [] # List of edge relation names to drop (e.g. ["worked_with", "funded_by"])
+      drop_node_types: [] # List of node types to drop (e.g. ["investor"])
+      drop_feature_groups: [] # List of feature groups to drop (e.g. ["team", "funding_rounds"])
+      feature_information_level: null # null = full features, "intrinsic" = only entity-intrinsic features (no relational/graph)
+  nan_filtering:
+    enabled: true
+    alphas:
+      ipo: 0.95
+      acquired: 0.95
+      closed: 0.90
+      operating: 0.90
+      funded: 0.80
+      not_funded: 0.80
+  target_mode: 'masked_multi_task' # Can be 'multi_prediction', 'binary_prediction', 'multi_task', 'multi_label', or 'masked_multi_task'
+  multi_column: future_status
+  binary_column: acq_ipo_funding # new_funding_round or t_acq_ipo_seriesA or acq_ipo_funding
+  # Multi-label configuration
+  multi_label:
+    columns:
+      funding: new_funding_round
+      acquisition: new_acquired
+      ipo: new_ipo
+    loss_weights:
+      funding: 1.0
+      acquisition: 1.0
+      ipo: 1.0
+    combined_metric_weights:
+      funding: 0.34
+      acquisition: 0.33
+      ipo: 0.33
+  remove_operating: false
+  old_year: 2023
+  new_year: 2025
+  keep_dc_status: true
+  use_org_description: false
+  use_people_description: false
+  visualize_embeddings: false
+  description_embedding_dim: 64
+  use_centrality_features: false
+  use_degree_centrality: true
+  use_pagerank_centrality: true
+  use_edge_counts: false
+  use_smart_money_features: false
+  structural_only: false
+  strict_gating:
+    enabled: true
+    # 1. Big Dogs (Late Stage or Huge Funding)
+    late_stage_funding_threshold: 15000000 # 15M
+    
+    # 2. Scale Ops (Headcount)
+    employee_count_threshold: 3 # 51+ employees
+    
+    # 3. Efficient Compounders (Age + Moderate Funding)
+    compounder_age_threshold: 5
+    compounder_funding_threshold: 3000000 # 3M4
+
+  edge_loading:
+    founder_investor_employment: true # Disable by default to fix regression
+    founder_coworking: false           # Disable by default
+    founder_investor_identity: true   # Disable by default
+    founder_co_study: false            # Disable by default
+    founder_role_edges: true           # Keep Board/Director enabled
+
+  role_edges_enabled: true # Enable Board/Director edges
+  use_louvain_clusters: true
+  louvain_resolution: 0.25
+  louvain_projection_types: ["investor", "city", "founder"]  # subset of: investor, city, founder, sector
+  add_metapaths: true
+  add_self_loops: true
+
+  resample:
+    enabled: false
+    class_distribution_multi: [0.3, 0.3, 0.3]
+    class_distribution_binary: [0.5, 0.5]
+    test_original: true
+
+  train:
+    ratio: 0.6
+    use_batches: false
+    neighbor_loader_nodes: 30
+    neighbor_loader_iterations: 3
+    neighbor_loader_batch_size: 128
+
+  val:
+    ratio: 0.2
+    use_batches: false
+    neighbor_loader_nodes: 30
+    neighbor_loader_iterations: 3
+    neighbor_loader_batch_size: 512
+
+  test:
+    ratio: 0.2
+    use_batches: false
+    neighbor_loader_nodes: 30
+    neighbor_loader_iterations: 3
+    neighbor_loader_batch_size: 512
+    test_change: false
+
+imputation:
+  enabled: true
+  node_types:
+    startup:
+      numerical_method: "zero"
+      categorical_method: "most_frequent"
+      categorical_columns: []
+    default:
+      numerical_method: median
+      categorical_method: most_frequent
+      categorical_columns: []
+
+xgboost:
+  enabled: false
+  use_gnn_embeddings: true # If true, loads embeddings from previous GNN run or uses freshly trained ones
+  embedding_path: "outputs/gnn_embeddings.pt" # Path to save/load embeddings
+  params:
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.1
+    subsample: 0.8
+    colsample_bytree: 0.8

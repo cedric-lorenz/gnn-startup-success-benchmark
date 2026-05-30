@@ -1,0 +1,42 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+  edge_loading:
+    founder_coworking: true
+  graph_variant: g4_heterophily
+explain:
+  enabled: false
+models:
+  SimpleHGN:
+    activation_type: relu
+    alpha: 0.07466294140089534
+    attn_dropout: 0.21870359196286696
+    bias: false
+    dropout: 0.1527923032842229
+    heads: 2
+    hidden_channels: 32
+    l2_normalize: true
+    negative_slope: 0.05
+    num_layers: 2
+    residual: true
+seed: 42
+train:
+  epochs: 100
+  gradient_clip_val: 1.541015278895138
+  loss:
+    label_smoothing: 0.0973536493885692
+    liquidity_weight: 0.119291208605775
+    momentum_weight: 1.373640018666806
+  lr: 0.012380705841740064
+  model: SimpleHGN
+  optimizer: Adam
+  scheduler:
+    type: None
+    warmup_epochs: 5
+  weight_decay: 4.9479946961501215e-06
+wandb:
+  enabled: true

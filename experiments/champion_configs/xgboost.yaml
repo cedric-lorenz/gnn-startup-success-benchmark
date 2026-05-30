@@ -1,0 +1,29 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+explain:
+  enabled: false
+models:
+  XGBoost:
+    colsample_bytree: 0.7351170170966392
+    gamma: 4.232499374011808
+    learning_rate: 0.060681201577578905
+    max_depth: 3
+    min_child_weight: 10
+    n_estimators: 800
+    objective: binary:logistic
+    reg_alpha: 7.962877587255758
+    reg_lambda: 0.881392056069872
+    scale_pos_weight: 7
+    subsample: 0.9946663528900792
+    tree_method: hist
+seed: 42
+train:
+  epochs: 1
+  model: XGBoost
+wandb:
+  enabled: true

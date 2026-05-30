@@ -1,0 +1,43 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+  edge_loading:
+    founder_coworking: true
+  graph_variant: g4_heterophily
+explain:
+  enabled: false
+models:
+  VenGNN:
+    activation_type: elu
+    branch_mode: b_only
+    dropout: 0.25090669603361493
+    gat_edge_mode: multiplicative
+    heads: 4
+    hidden_channels: 128
+    num_layers: 3
+    paper_widening: false
+    rw_num_walks: 8
+    rw_walk_length: 3
+    rw_weighted: false
+    use_paper_attention: true
+seed: 42
+train:
+  epochs: 100
+  gradient_clip_val: 1.2736113634427824
+  loss:
+    label_smoothing: 0.04463693897601855
+    liquidity_weight: 1.3973085912372756
+    momentum_weight: 1.5854602100989807
+  lr: 0.005283956139952156
+  model: VenGNN
+  optimizer: Adam
+  scheduler:
+    type: None
+    warmup_epochs: 20
+  weight_decay: 0.00020254689515391663
+wandb:
+  enabled: true

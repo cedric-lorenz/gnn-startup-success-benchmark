@@ -1,0 +1,37 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+  edge_loading:
+    founder_coworking: true
+  graph_variant: g4_heterophily
+explain:
+  enabled: false
+models:
+  HAN:
+    activation_type: elu
+    dropout: 0.019574987032495605
+    heads: 4
+    hidden_channels: 128
+    negative_slope: 0.24267167724106933
+    num_layers: 3
+seed: 42
+train:
+  epochs: 100
+  gradient_clip_val: 1.7361165514092092
+  loss:
+    label_smoothing: 0.05043114655715217
+    liquidity_weight: 0.6920504407156096
+    momentum_weight: 0.9183944176582208
+  lr: 0.003472541511207723
+  model: HAN
+  optimizer: Adam
+  scheduler:
+    type: None
+    warmup_epochs: 10
+  weight_decay: 2.0929040551751544e-06
+wandb:
+  enabled: true

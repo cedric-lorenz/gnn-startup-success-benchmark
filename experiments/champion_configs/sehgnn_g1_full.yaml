@@ -1,0 +1,44 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+  edge_loading:
+    founder_coworking: true
+  graph_variant: g1_full
+explain:
+  enabled: false
+models:
+  SeHGNN:
+    activation_type: elu
+    att_drop: 0.07664724646420325
+    attention_temperature: 1.2329133017891214
+    dropout: 0.28966246830083836
+    heads: 4
+    hidden_channels: 64
+    input_drop: 0.06313531015241898
+    num_hops: 3
+    transformer_activation: relu
+    use_discrepancy: false
+    use_residual: true
+    use_retrieval_head: false
+    use_self_loop: true
+seed: 42
+train:
+  epochs: 100
+  gradient_clip_val: 0.9087902420019276
+  loss:
+    label_smoothing: 0.07388734978169002
+    liquidity_weight: 0.11109699134114331
+    momentum_weight: 0.3872605143461252
+  lr: 0.005242914129450476
+  model: SeHGNN
+  optimizer: Adam
+  scheduler:
+    type: ReduceLROnPlateau
+    warmup_epochs: 10
+  weight_decay: 0.00033056163930169654
+wandb:
+  enabled: true

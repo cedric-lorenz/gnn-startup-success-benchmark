@@ -1,0 +1,46 @@
+analysis:
+  enable_downstream_analysis: false
+  enable_homophily_analysis: false
+  enable_visualization_analysis: false
+data_processing:
+  ablation:
+    feature_information_level: intrinsic
+  edge_loading:
+    founder_coworking: true
+  graph_variant: g4_heterophily
+explain:
+  enabled: false
+models:
+  Hetero2Net:
+    activation_type: relu
+    alpha: 0.1
+    aux_loss_weight: 1
+    aux_reduction: sum
+    beta: 0.4
+    corr_on_metapaths_only: true
+    dropout: 0
+    hidden_channels: 64
+    label_mask_ratio: 0.7
+    mask_ratio: 0.7
+    normalize_bn: true
+    num_label_classes: 2
+    num_layers: 2
+    root_weight: true
+    use_label_propagation: false
+seed: 42
+train:
+  epochs: 40
+  gradient_clip_val: 0.5938354663769281
+  loss:
+    label_smoothing: 0.01895119900489879
+    liquidity_weight: 1.1123594372823773
+    momentum_weight: 1.6312844750195583
+  lr: 0.005
+  model: Hetero2Net
+  optimizer: AdamW
+  scheduler:
+    type: CosineAnnealingLR
+    warmup_epochs: 10
+  weight_decay: 0
+wandb:
+  enabled: true
