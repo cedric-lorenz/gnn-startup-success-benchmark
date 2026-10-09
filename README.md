@@ -1,6 +1,6 @@
 # Heterogeneous Graph Neural Networks for Startup Success Prediction: A Multi-Task Benchmark
 
-Code for the ICDM 2026 paper above. A leakage-free, two-snapshot benchmark of
+A leakage-free, two-snapshot benchmark of
 heterogeneous GNNs (HAN, SeHGNN, R-GCN, Simple-HGN, Hetero²Net), a VenGNN
 comparator, and tabular / homogeneous-GNN / zero-shot-LLM baselines on a
 163,531-startup Crunchbase graph, jointly predicting Next Funding Round (NFR)
